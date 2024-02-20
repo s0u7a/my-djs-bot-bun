@@ -1,18 +1,45 @@
-const { Client, GatewayIntentBits } = require("discord.js");
-const hping = require('./hping.js');
-const client = new Client({
-  intents: Object.values(GatewayIntentBits).reduce((a, b) => a | b)
+const fs = require('node:fs');
+const path = require('node:path');
+const { Client, Collection, GatewayIntentBits } = require('discord.js');
+const { token } = require('./config.json');
+
+const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+
+client.on('ready', () => {
+	console.log(`${client.user.tag}でログインしました。`);
 });
 
-client.on("ready", () => {
-  console.log(`logged on ${client.user.tag}`);
-});
+client.login(token);
 
-client.on("messageCreate", async msg => {
-  if (msg.content === "!ping") {
-    var pingresponce = await hping("1.1.1.1", 443);
-    msg.reply(pingresponce);
-  }
-});
+client.commands = new Collection();
 
-client.login("MTIwODA0NjQ0NzQ3MjQxODg3Nw.GTA_94.Auo3dfX_xpk5G6Ghp5aq_xyNB7gY9YMUBcM6JA");
+const commandsPath = path.join(__dirname, 'commands');
+const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
+
+for (const file of commandFiles) {
+	const filePath = path.join(commandsPath, file);
+	const command = require(filePath);
+	if ('data' in command && 'execute' in command) {
+		client.commands.set(command.data.name, command);
+	} else {
+		console.log(`${filePath} に必要な "data" か "execute" がありません。`);
+	}
+}
+
+client.on('interactionCreate', async interaction => {
+	if (!interaction.isChatInputCommand()) return;
+
+	const command = interaction.client.commands.get(interaction.commandName);
+
+	if (!command) {
+		console.error(`${interaction.commandName} が見つかりません。`);
+		return;
+	}
+
+	try {
+		await command.execute(interaction);
+	} catch (error) {
+		console.error(error);
+		await interaction.reply({ content: 'エラーが発生しました。', ephemeral: true });
+	}
+});
